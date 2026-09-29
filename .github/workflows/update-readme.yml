@@ -1,0 +1,66 @@
+name: Update README Activity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.REPO_TOKEN }}
+
+      - name: Update README activity
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          path = Path("README.md")
+          text = path.read_text()
+
+          start = "<!-- ACTIVITY:START -->"
+          end = "<!-- ACTIVITY:END -->"
+
+          if start not in text or end not in text:
+              raise SystemExit("README activity markers are missing")
+
+          timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+          new_content = (
+              f"{start}\n"
+              f"Last automated update: {timestamp}\n"
+              f"{end}"
+          )
+
+          before = text.split(start)[0]
+          after = text.split(end)[1]
+
+          path.write_text(before + new_content + after)
+          PY
+
+      - name: Commit README update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+
+          if git diff --cached --quiet; then
+            echo "No README changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: auto-update README activity"
+          git push
