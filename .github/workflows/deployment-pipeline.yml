@@ -1,10 +1,7 @@
-name: CI/CD Deployment Pipeline
+name: Build-Test-Deploy Pipeline
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -15,58 +12,108 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create build artifact
-        run: |
-          zip -r build.zip . -x ".git/*"
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-artifact
-          path: build.zip
+          path: dist/
+
+  test-unit:
+    name: Unit Test
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TEST_ENV: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: dist/
+
+      - name: Run Unit Tests
+        run: npm run test:unit
+
+  test-integration:
+    name: Integration Test
+    needs: test-unit
+    runs-on: ubuntu-latest
+    env:
+      TEST_ENV: prod
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: dist/
+
+      - name: Run Integration Tests
+        run: npm run test:integration
 
   deploy-staging:
     name: Deploy to Staging
-    needs: build
+    needs: test-integration
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      contents: write
 
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: build-artifact
+          path: dist/
 
       - name: Create Staging Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ vars.BUILD_TAG }}
-          NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
-          gh release create "$TAG" build.zip \
-            --title "$TAG" \
-            --notes "$NOTE"
+          gh release create "staging-test-${GITHUB_RUN_NUMBER}" dist/* \
+            --title "staging-test-${GITHUB_RUN_NUMBER}" \
+            --notes "Staging release after successful automated tests"
 
   deploy-production:
     name: Deploy to Production
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: write
 
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: build-artifact
+          path: dist/
 
       - name: Create Production Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ vars.BUILD_TAG }}
-          NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
-          gh release create "$TAG" build.zip \
-            --title "$TAG" \
-            --notes "$NOTE"
+          gh release create "prod-test-${GITHUB_RUN_NUMBER}" dist/* \
+            --title "prod-test-${GITHUB_RUN_NUMBER}" \
+            --notes "Production release after successful automated tests"
