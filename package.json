@@ -6,6 +6,6 @@
     "build": "mkdir -p dist && cp README.md dist/README.md",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "node test/unit.test.js",
-    "test:integration": "node test/integration.test.js"
+    "test:integration": "node test/integration.test.js" 
   }
 }
